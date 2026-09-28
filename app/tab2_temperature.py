@@ -495,6 +495,13 @@ def render_tab2b_moving_average(df,
         }
     }
 
+    def resample_yearly(series):
+        """Resample to yearly, handling both old and new pandas versions."""
+        try:
+            return series.resample('YE').sum()
+        except ValueError:
+            return series.resample('A').sum()
+
     # --- HELPER FUNCTIONS ---
     def calculate_ssp_ma_with_bands(scenarios, threshold_scenarios):
         """Calculate moving average with 10th-90th percentile bands from individual GCMs."""
@@ -502,11 +509,11 @@ def render_tab2b_moving_average(df,
         for scenario, thresh_scenario in zip(scenarios, threshold_scenarios):
             threshold = threshold_lookup.loc[thresh_scenario]
             binary_series = compare_to_threshold(df_filtered[scenario], threshold).astype(int)
-            individual_yearly.append(binary_series.resample('A').sum().values)
+            individual_yearly.append(resample_yearly(binary_series).values)
 
         # Convert to array for vectorized operations
         individual_array = np.array(individual_yearly)
-        years = binary_series.resample('A').sum().index
+        years = resample_yearly(binary_series).index
 
         # Calculate median across GCMs
         mean_yearly = np.mean(individual_array, axis=0)
