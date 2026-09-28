@@ -6,19 +6,24 @@ Main entry point for the application. Handles:
 - Tab navigation
 - Page configuration and styling
 """
-
 import streamlit as st
 import sys
 from pathlib import Path
+import traceback
 
 # Add modules to path
-sys.path.insert(0, str(Path(__file__).parent / "app"))
+try:
+    sys.path.insert(0, str(Path(__file__).parent / "app"))
 
-from data_loader import get_gauge_names_for_site
-from data_loader import get_sites, get_gauges_for_site
-from tab1_watercycles import render_tab1
-from tab2_temperature import render_tab2
+    from data_loader import get_gauge_names_for_site
+    from data_loader import get_sites, get_gauges_for_site
+    from tab1_watercycles import render_tab1
+    from tab2_temperature import render_tab2
 
+except Exception as e:
+    st.error(f"❌ Failed to import modules: {e}")
+    st.error(traceback.format_exc())
+    st.stop()
 # ========================================
 # PAGE CONFIGURATION
 # ========================================
