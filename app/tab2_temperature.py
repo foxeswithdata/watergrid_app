@@ -913,6 +913,5 @@ def render_tab2(site: str, gauge: str):
     # """)
     
     st.info(
-        "💬 **Questions?** Review the interpretation guides (📌) throughout this tab. "
-        "Use the sidebar to adjust analysis parameters and see how results change."
+        "💬 **Questions?** This is still a work in progress. Please reach out to the project team for clarifications or suggestions."
     )
