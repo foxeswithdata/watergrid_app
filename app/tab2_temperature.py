@@ -253,6 +253,373 @@ def render_tab2a_num_days(df,
 
     return fig3
 
+def render_tab2b_moving_average(df,
+                          future_start_year,
+                          future_end_year,
+                          ref_start_year,
+                          ref_end_year,
+                          months_to_analyze=None,
+                          use_fix=None,
+                          threshold_value=None,
+                          comparison_type=None,
+                                ma_window_years=30):
+
+
+    print("Rendering Tab 2a: Number of Extreme Days Over Time")
+
+    # Define temporal resolution ('monthly' or 'daily')
+    temporal_resolution = 'daily'  # Options: 'monthly' or 'daily'
+
+    # Define threshold type
+    fix_value = threshold_value  # Fixed threshold value (only used if use_fix = True)
+
+    # Define percentile threshold for analysis (only used if use_fix = False)
+    percentile_threshold = threshold_value  # e.g., 90 = 90th percentile
+
+    # Define comparison type ('below' for cold extremes, 'above' for hot extremes)
+    comparison_type = 'above'  # Options: 'below', 'above'
+
+    # Define scenario exclusion patterns (global)
+    # These patterns will be excluded from all SSP analyses
+    # if none should be exclude: exclude_patterns = []
+    exclude_patterns = ['ISI_UKESM1-0-LL', 'ISI_GFDL-ESM4']
+
+    # Define moving average window size (in years)
+    # Used for trend analysis and smoothing of time series data
+    ma_window_years = 30  # Moving average window size in years
+
+    # Create dynamic labels and helper variables based on comparison type
+    if comparison_type == 'below':
+        direction = 'below'
+        direction_cap = 'Below'
+        operator_symbol = 'â‰¤'
+        operator_text = '<='
+        flow_type = 'Low'
+        extreme_type = 'cold'
+    else:  # 'above'
+        direction = 'above'
+        direction_cap = 'Above'
+        operator_symbol = 'â‰¥'
+        operator_text = '>='
+        flow_type = 'High'
+        extreme_type = 'hot'
+
+    # Helper function for threshold comparison
+    def compare_to_threshold(data, threshold):
+        if comparison_type == 'below':
+            return data <= threshold
+        else:  # 'above'
+            return data >= threshold
+
+    # Create dynamic labels based on temporal resolution
+    if temporal_resolution == 'daily':
+        period_label = 'day'
+        period_label_plural = 'days'
+        period_label_cap = 'Day'
+        period_label_cap_plural = 'Days'
+    else:  # monthly
+        period_label = 'month'
+        period_label_plural = 'months'
+        period_label_cap = 'Month'
+        period_label_cap_plural = 'Months'
+
+    # Display configuration
+    month_names = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+                   7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
+    month_label = ', '.join([month_names[m] for m in months_to_analyze])
+
+    print(f"Analysis Configuration:")
+    print(f"  Reference period: {ref_start_year}-{ref_end_year}")
+    print(f"  Future period: {future_start_year}-{future_end_year}")
+    print(f"  {period_label_cap_plural}: {month_label} ({months_to_analyze})")
+    print(f"  Temporal resolution: {temporal_resolution}")
+    if use_fix:
+        print(f"  Threshold type: Fixed value = {fix_value}")
+    else:
+        print(f"  Threshold type: {percentile_threshold}th percentile")
+    print(f"  Comparison type: {comparison_type} ({extreme_type} extremes)")
+    print(f"  Period duration: {ref_end_year - ref_start_year + 1} years")
+
+    period_ref = (df.index >= f'{ref_start_year}-01-01') & (df.index <= f'{ref_end_year}-12-31') & (
+        df.index.month.isin(months_to_analyze))
+    period_future = (df.index >= f'{future_start_year}-01-01') & (df.index <= f'{future_end_year}-12-31') & (
+        df.index.month.isin(months_to_analyze))
+    period_all = (df.index >= f'{ref_start_year}-01-01') & (df.index <= f'{future_end_year}-12-31') & (
+        df.index.month.isin(months_to_analyze))
+
+    # Filter data for each period
+    df_ref = df[period_ref]
+    df_future = df[period_future]
+    df_all = df[period_all]
+    print(f"Reference period {ref_start_year}-{ref_end_year} ({month_label}): {len(df_ref)} {period_label_plural}")
+    print(
+        f"Future period {future_start_year}-{future_end_year} ({month_label}): {len(df_future)} {period_label_plural}")
+    print(f"All period {ref_start_year}-{future_end_year} ({month_label}): {len(df_all)} {period_label_plural}")
+
+    # Create filtered scenario lists for each SSP
+    ssp126_scenarios_filtered = [col for col in df.columns
+                                 if 'SSP126' in col and not any(pattern in col for pattern in exclude_patterns)]
+    ssp245_scenarios_filtered = [col for col in df.columns
+                                 if 'SSP245' in col and not any(pattern in col for pattern in exclude_patterns)]
+    ssp370_scenarios_filtered = [col for col in df.columns
+                                 if 'SSP370' in col and not any(pattern in col for pattern in exclude_patterns)]
+    ssp585_scenarios_filtered = [col for col in df.columns
+                                 if 'SSP585' in col and not any(pattern in col for pattern in exclude_patterns)]
+    results = []
+
+    # Create column name labels based on configured periods
+    ref_label = f'{ref_start_year}_{ref_end_year}'
+    future_label = f'{future_start_year}_{future_end_year}'
+
+    # Determine threshold label based on whether using fixed value or percentile
+    if use_fix:
+        # Use just the value without 'Fixed_' prefix
+        threshold_label = f'{fix_value}'
+        percentile_label = threshold_label
+    else:
+        # Convert percentile to quantile (5 -> 0.05)
+        quantile_value = percentile_threshold / 100.0
+        percentile_label = f'P{percentile_threshold}'
+        threshold_label = percentile_label
+
+    for col in df.columns:
+        data_ref = df_ref[col]
+        data_future = df_future[col]
+
+        # Calculate threshold based on use_fix flag
+        if use_fix:
+            threshold = fix_value
+        else:
+            threshold = data_ref.quantile(quantile_value)
+
+        results.append({
+            'Scenario': col,
+            f'Avg_{ref_label}': data_ref.mean(),
+            f'P5_{ref_label}': data_ref.quantile(0.05),
+            f'P10_{ref_label}': data_ref.quantile(0.10),
+            f'P50_{ref_label}': data_ref.quantile(0.50),
+            f'P95_{ref_label}': data_ref.quantile(0.95),
+            f'Avg_{future_label}': data_future.mean(),
+            f'P5_{future_label}': data_future.quantile(0.05),
+            f'P10_{future_label}': data_future.quantile(0.10),
+            f'P50_{future_label}': data_future.quantile(0.50),
+            f'P95_{future_label}': data_future.quantile(0.95),
+            f'{threshold_label}_{ref_label}': threshold,
+            f'{period_label_cap}_{direction}_{threshold_label}_{ref_label}': compare_to_threshold(data_ref,
+                                                                                                  threshold).sum(),
+            f'Pct_{direction}_{threshold_label}_{ref_label}': 100 * compare_to_threshold(data_ref,
+                                                                                         threshold).sum() / len(
+                data_ref),
+            f'{period_label_cap}_{direction}_{threshold_label}_{future_label}': compare_to_threshold(data_future,
+                                                                                                     threshold).sum(),
+            f'Pct_{direction}_{threshold_label}_{future_label}': 100 * compare_to_threshold(data_future,
+                                                                                            threshold).sum() / len(
+                data_future)
+        })
+
+    results_df = pd.DataFrame(results)
+
+    # Cell No: 7
+    # Add SSP classification to results
+    results_df['SSP'] = results_df['Scenario'].apply(
+        lambda x: 'SSP1-2.6' if 'SSP126' in x else (
+            'SSP2-4.5' if 'SSP245' in x else ('SSP3-7.0' if 'SSP370' in x else 'SSP5-8.5'))
+    )
+
+    # Calculate period per year
+    num_years = future_end_year - future_start_year + 1
+    results_df[f'{period_label_cap}_per_year_{future_label}'] = results_df[
+                                                                    f'{period_label_cap}_{direction}_{percentile_label}_{future_label}'] / num_years
+
+    # Sort by period per year
+    results_sorted = results_df.sort_values(f'{period_label_cap}_per_year_{future_label}', ascending=True)
+
+    # Cell No: 8
+    # Assign filtered scenario lists
+    ssp126_scenarios = ssp126_scenarios_filtered
+    ssp245_scenarios = ssp245_scenarios_filtered
+    ssp585_scenarios = ssp585_scenarios_filtered
+    num_scenarios = len(ssp245_scenarios)
+
+    # Combine all non-excluded scenarios
+    all_filtered_scenarios = ssp126_scenarios + ssp245_scenarios + ssp585_scenarios
+
+    # Redefine df_ref to only include non-excluded scenarios
+    df_ref = df_ref[all_filtered_scenarios]
+    df_future = df_future[all_filtered_scenarios]
+    df_all = df_all[all_filtered_scenarios]
+
+    # --- DATA PREPARATION ---
+    df_filtered = df[(df.index >= '1961-01-01') & (df.index <= '2100-12-31')]
+    df_filtered = df_filtered[df_filtered.index.month.isin(months_to_analyze)]
+    df_filtered = df_filtered[all_filtered_scenarios]
+
+    print(f"Filtered DataFrames to {len(all_filtered_scenarios)} scenarios (excluded: {exclude_patterns})")
+    # df_filtered.columns[0]
+
+    # Cell No: 9
+    # ===================================================================
+    # MOVING AVERAGE ANALYSIS BY SSP
+    # Calculates moving averages with 10th-90th percentile bands from GCMs
+    # ===================================================================
+
+    # --- DATA PREPARATION ---
+    df_filtered = df[(df.index >= '1961-01-01') & (df.index <= '2100-12-31')]
+    df_filtered = df_filtered[df_filtered.index.month.isin(months_to_analyze)]
+
+    # Pre-compute threshold lookup (avoid repeated DataFrame operations)
+    threshold_lookup = results_df.set_index('Scenario')[f'{percentile_label}_{ref_label}']
+
+    # --- SSP CONFIGURATION ---
+    SSP_CONFIG = {
+        'SSP126': {
+            'scenarios': ssp126_scenarios,
+            'threshold_scenarios': ssp245_scenarios[:len(ssp126_scenarios)],
+            'color': 'lightblue',
+            'fill_color': 'rgba(173, 216, 230, 0.15)',
+            'label': 'SSP1-2.6'
+        },
+        'SSP245': {
+            'scenarios': ssp245_scenarios,
+            'threshold_scenarios': ssp245_scenarios,
+            'color': 'pink',
+            'fill_color': 'rgba(255, 165, 0, 0.15)',
+            'label': 'SSP2-4.5'
+        },
+        'SSP585': {
+            'scenarios': ssp585_scenarios,
+            'threshold_scenarios': ssp245_scenarios[:len(ssp585_scenarios)],
+            'color': 'red',
+            'fill_color': 'rgba(255, 0, 0, 0.15)',
+            'label': 'SSP5-8.5'
+        }
+    }
+
+    # --- HELPER FUNCTIONS ---
+    def calculate_ssp_ma_with_bands(scenarios, threshold_scenarios):
+        """Calculate moving average with 10th-90th percentile bands from individual GCMs."""
+        individual_yearly = []
+        for scenario, thresh_scenario in zip(scenarios, threshold_scenarios):
+            threshold = threshold_lookup.loc[thresh_scenario]
+            binary_series = compare_to_threshold(df_filtered[scenario], threshold).astype(int)
+            individual_yearly.append(binary_series.resample('A').sum().values)
+
+        # Convert to array for vectorized operations
+        individual_array = np.array(individual_yearly)
+        years = binary_series.resample('A').sum().index
+
+        # Calculate median across GCMs
+        mean_yearly = np.mean(individual_array, axis=0)
+
+        # Apply moving average to median
+        mean_ma = pd.Series(mean_yearly, index=years).rolling(
+            window=ma_window_years, center=False).mean().values
+
+        # Apply MA to each GCM and compute percentiles
+        individual_ma = np.array([
+            pd.Series(gcm, index=years).rolling(window=ma_window_years, center=False).mean().values
+            for gcm in individual_array
+        ])
+
+        return {
+            'mean': mean_ma,
+            'p10': np.percentile(individual_ma, 10, axis=0),
+            'p90': np.percentile(individual_ma, 90, axis=0),
+            'years': years.year
+        }
+
+    def create_ssp_plot(ssp_data, config, y_range, baseline):
+        """Create a single SSP plot with percentile bands."""
+        fig = go.Figure()
+        years = ssp_data['years']
+
+        # Add percentile band (upper bound)
+        fig.add_trace(go.Scatter(
+            x=years, y=ssp_data['p90'],
+            mode='lines', line=dict(width=1, color=config['color']),
+            showlegend=False, hoverinfo='skip'
+        ))
+        # Add percentile band (lower bound with fill)
+        fig.add_trace(go.Scatter(
+            x=years, y=ssp_data['p10'],
+            mode='lines', fill='tonexty', fillcolor=config['fill_color'],
+            line=dict(width=1, color=config['color']),
+            name='10th-90th Percentile',
+            hovertemplate='Year: %{x}<br>10th-90th Percentile Range<extra></extra>'
+        ))
+        # Add median line
+        fig.add_trace(go.Scatter(
+            x=years, y=ssp_data['mean'],
+            mode='lines', name='Ensemble Mean',
+            line=dict(color=config['color'], width=3),
+            hovertemplate=f'Year: %{{x}}<br>{period_label_cap_plural}/Year: %{{y:.2f}}<extra></extra>'
+        ))
+        # Add baseline
+        fig.add_hline(
+            y=baseline, line_dash="dash", line_color="green",
+            annotation_text=f"Baseline ({baseline:.2f} {period_label_cap_plural}/year)",
+            annotation_position="top right"
+        )
+        # Layout
+        fig.update_layout(
+            title=f'{config["label"]}: {ma_window_years}-Year Moving Average - {period_label_cap_plural} per Year {direction_cap} {percentile_label}',
+            xaxis_title=f'Year (Center of {ma_window_years}-year window)',
+            yaxis_title=f'{period_label_cap_plural} per Year {direction_cap} {percentile_label}',
+            height=500, width=1000, hovermode='x unified',
+            plot_bgcolor='white', paper_bgcolor='white',
+            xaxis=dict(showgrid=True, gridcolor='lightgray', range=[1990, 2100]),
+            yaxis=dict(showgrid=True, gridcolor='lightgray', range=y_range),
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+        )
+        return fig
+
+    # --- CALCULATE MOVING AVERAGES FOR ALL SSPs ---
+    ssp_results = {}
+    for ssp_name, config in SSP_CONFIG.items():
+        ssp_results[ssp_name] = calculate_ssp_ma_with_bands(
+            config['scenarios'], config['threshold_scenarios']
+        )
+        # print(ssp_results[ssp_name]['mean'] )
+
+    # Extract years (same for all SSPs)
+    years_all = ssp_results['SSP126']['years']
+
+    # Calculate global y-axis range
+    all_p10 = [ssp_results[ssp]['p10'] for ssp in SSP_CONFIG]
+    all_p90 = [ssp_results[ssp]['p90'] for ssp in SSP_CONFIG]
+    y_min = min(np.nanmin(p) for p in all_p10)
+    y_max = max(np.nanmax(p) for p in all_p90)
+    y_padding = (y_max - y_min) * 0.05
+    y_range = [y_min - y_padding, y_max + y_padding]
+
+    # Calculate baseline using MEDIAN (not average)
+    if use_fix:
+        num_years_ref = ref_end_year - ref_start_year + 1
+        # Calculate count per scenario, then take median
+        counts_per_scenario = [compare_to_threshold(df_ref[col], fix_value).sum() for col in df_ref.columns]
+        baseline = np.mean(counts_per_scenario) / num_years_ref
+    else:
+        num_periods = len(df_filtered) / len(pd.date_range('1960', '2100', freq='YE'))
+        pct = percentile_threshold / 100.0 if comparison_type == 'below' else (100 - percentile_threshold) / 100.0
+        baseline = num_periods * pct
+
+    # Store global data for other cells
+    ma_data = {
+        ssp: {'years': years_all, 'values': ssp_results[ssp]['mean']}
+        for ssp in SSP_CONFIG
+    }
+    ma_data['min'] = min(np.nanmin(ssp_results[ssp]['mean']) for ssp in SSP_CONFIG)
+    ma_data['max'] = max(np.nanmax(ssp_results[ssp]['mean']) for ssp in SSP_CONFIG)
+
+    # --- CREATE AND DISPLAY PLOTS ---
+    figs = []
+    for ssp_name, config in SSP_CONFIG.items():
+        fig = create_ssp_plot(ssp_results[ssp_name], config, y_range, baseline)
+        figs.append(fig)
+
+    return figs
+
+
 # ========================================
 # CONFIGURATION SIDEBAR (Per-Tab Controls)
 # ========================================
@@ -353,18 +720,6 @@ def render_tab2(site: str, gauge: str):
         - **SSP126**: Scenario with strong climate mitigation (1.5-2°C warming by 2100)
         - **SSP245**: Intermediate scenario with current policies (2.5-3°C warming)
         - **SSP585**: High-emissions scenario (3.5-4°C+ warming by 2100)
-        
-        ### What Changes Across Scenarios?
-        As emissions increase from SSP126 → SSP245 → SSP585:
-        - **Hotter extremes** → More frequent and more intense
-        - **Colder extremes** → Less frequent and less intense
-        - The difference between scenarios grows over time
-        
-        ### How to Read the Graphs
-        1. **Time series plot**: Shows the number of extreme days per year (colored lines = different scenarios)
-        2. **Moving average**: 30-year smoothing line helps see trends despite year-to-year variability
-        3. **Bar charts**: Aggregate counts for reference vs. future periods
-        4. **Color scale**: Intensity map showing long-term patterns
         """)
     
     st.markdown("---")
@@ -402,18 +757,18 @@ def render_tab2(site: str, gauge: str):
     # ========================================
     # VISUALIZATIONS
     # ========================================
-    st.markdown("### 📊 Visualizations")
+    st.markdown("### Visualizations")
     
     # Tab 2a: Time Series Analysis
     st_tab2a, st_tab2b = st.tabs([
-        "Scenario Comparison",
-        "Time Series Analysis"
+        "Scenario and Model Comparison",
+        "Time Series Ensemble"
     ])
     
     with st_tab2a:
-        st.markdown("#### Time Series: Extreme Days Over Time")
-        with st.expander("📌 **How to read this chart**", expanded=False):
-            st.markdown("""...""")
+        st.markdown("#### Number of extreme days over threshold")
+        with st.expander(" **How to read this chart**", expanded=False):
+            st.markdown("""tbc""")
 
         months_to_analyze = [
             {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
@@ -444,25 +799,26 @@ def render_tab2(site: str, gauge: str):
         st.plotly_chart(fig, use_container_width=True)
 
     with st_tab2b:
-        st.markdown("#### Scenario Comparison: Reference vs. Future")
-        with st.expander("📌 **How to read this chart**", expanded=False):
+        st.markdown("#### Moving Average Of Number of Days over Threshold: Projections Model Ensemble")
+        with st.expander("**How to read this chart**", expanded=False):
             st.markdown("""
-            **Comparing Scenarios:**
-            - **Bars = Total extreme days** across all years in each period
-            - **Three groups** = Three climate scenarios (SSP126, SSP245, SSP585)
-            - **Within each group** = Reference period (left) vs. Future period (right)
-            
-            **What it tells you:**
-            - Growing bar heights show increasing extremes
-            - SSP585 usually has the largest increase
-            - If bars stay the same, extremes aren't changing much
+            tbc
             """)
-        
-        if 'comparison_figure' in data:
-            st.plotly_chart(data['comparison_figure'], use_container_width=True)
-        else:
-            st.warning("Scenario comparison visualization not available")
-    
+
+        figs=render_tab2b_moving_average(
+                df=data['raw_df'],  # ✅ Pass the actual DataFrame
+                future_start_year=config['future_start'],
+                future_end_year=config['future_end'],
+                ref_start_year=config['ref_start'],
+                ref_end_year=config['ref_end'],
+                months_to_analyze=months_to_analyze,
+                use_fix=config["use_fix"],
+                threshold_value=config["threshold_value"],
+                comparison_type=config["comparison_type"]
+        )
+        for fig in figs:
+            st.plotly_chart(fig, use_container_width=True)
+
     # with st_tab2c:
     #     st.markdown("#### Detailed Analysis: Heatmap & Statistics")
     #     with st.expander("📌 **How to read this chart**", expanded=False):
