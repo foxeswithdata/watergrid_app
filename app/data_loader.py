@@ -192,8 +192,6 @@ def load_temperature_data(site: str, gauge: str, config: Dict[str, Any]) -> Dict
     temp_file = site_config["temp_file"].format(gauge=gauge)
     file_path = DATA_DIR / site / temp_file
 
-    st.markdown(file_path)
-
     if not file_path.exists():
         raise FileNotFoundError(f"Temperature data file not found: {file_path}")
     
@@ -208,8 +206,8 @@ def load_temperature_data(site: str, gauge: str, config: Dict[str, Any]) -> Dict
     df.set_index('date', inplace=True)
 
     for col in df.columns:
-        if col != 'date':  # Skip date column
-            df = standardize_temperature_column(df, col)
+        if col != 'date':
+            standardize_temperature_column(df, col, inplace=True)
 
     # Extract configuration
     ref_start_year = config['ref_start']
